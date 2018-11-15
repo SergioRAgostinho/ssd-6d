@@ -7,7 +7,7 @@ import cv2
 from tqdm import tqdm
 from scipy.linalg import expm, norm
 
-from rendering.renderer import Renderer
+from .renderer import Renderer
 
 
 def draw_detections_2D(image, detections):

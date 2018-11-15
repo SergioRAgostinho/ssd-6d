@@ -9,7 +9,7 @@ import cv2
 
 import ruamel.yaml as yaml
 
-from rendering.model import Model3D
+from ..rendering.model import Model3D
 
 ''' The following were copied over from the 6DB toolkit'''
 def load_yaml(path):
@@ -56,27 +56,43 @@ class Benchmark:
         self.cam = None
         self.models = {}
 
+def load_cam_info(base_path, bench):
+    if not os.path.exists(os.path.join(base_path, 'camera.yml')):
+        return bench
 
-def load_sixd(base_path, seq, nr_frames=0, load_mesh=True):
+    cam_info = load_yaml(os.path.join(base_path, 'camera.yml'))
+    cam = np.eye(3)
+    cam[0, 0] = cam_info['fx']
+    cam[0, 2] = cam_info['cx']
+    cam[1, 1] = cam_info['fy']
+    cam[1, 2] = cam_info['cy']
 
-    bench = Benchmark()
-    bench.scale_to_meters = 0.001
-    if os.path.exists(os.path.join(base_path, 'camera.yml')):
-        cam_info = load_yaml(os.path.join(base_path, 'camera.yml'))
-        bench.cam = np.eye(3)
-        bench.cam[0, 0] = cam_info['fx']
-        bench.cam[0, 2] = cam_info['cx']
-        bench.cam[1, 1] = cam_info['fy']
-        bench.cam[1, 2] = cam_info['cy']
-        bench.scale_to_meters = 0.001 * cam_info['depth_scale']
-    else:
-        print("Could not find camera.yml. Taking camera matrix of the first frame instead.")
+    bench.scale_to_meters = 0.001 * cam_info['depth_scale']
+    bench.cam = cam
+    return bench
 
+def init_models(base_path, bench):
     model_info = load_yaml(os.path.join(base_path, 'models', 'models_info.yml'))
     for key, val in model_info.items():
         name = 'obj_{:02d}'.format(int(key))
         bench.models[name] = Model3D()
         bench.models[name].diameter = val['diameter']
+    return bench
+
+def load_model(base_path, oid, bench):
+    name = 'obj_{:02d}'.format(oid)
+    bench.models[name].load(os.path.join(base_path, 'models/' + name + '.ply'), scale=bench.scale_to_meters)
+    return bench
+
+def load_sixd(base_path, seq, nr_frames=0, load_mesh=True):
+
+    bench = Benchmark()
+    bench.scale_to_meters = 0.001
+    bench = load_cam_info(base_path, bench)
+    if np.all(bench.cam == np.eye(3)):
+        print("Could not find camera.yml. Taking camera matrix of the first frame instead.")
+
+    bench = init_models(base_path, bench)
 
     if seq is None:
         return bench
@@ -113,8 +129,7 @@ def load_sixd(base_path, seq, nr_frames=0, load_mesh=True):
         # Build a set of all used model IDs for this sequence
         all_gts = list(itertools.chain(*[f.gt for f in bench.frames]))
         for ID in set([gt[0] for gt in all_gts]):
-            name = 'obj_{:02d}'.format(ID)
-            bench.models[name].load(os.path.join(base_path, 'models/' + name + '.ply'), scale=bench.scale_to_meters)
+            bench = load_model(base_path, ID, bench)
 
     return bench
 
